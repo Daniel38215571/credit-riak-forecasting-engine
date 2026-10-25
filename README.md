@@ -39,3 +39,10 @@ The system calculates the **optimal probability threshold** (currently 45%) that
 - [x] Calibrated Credit Risk Model
 - [x] Expected Loss Forecasting (with Confidence Intervals)
 - [x] Low-latency Rust Inference Engine
+
+## How to Run
+
+1. Clone the repo.
+2. Install dependencies: `pip install -r requirements.txt` (or equivalent).
+3. Run the models: `python models/credit_risk_model.py`
+4. Run the forecast: `python forecasting/expected_loss_forecast.py`

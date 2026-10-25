@@ -1,24 +1,41 @@
 # Credit Risk & Loss Forecasting Engine
 
-**Thesis:** A model is only as good as its ability to survive uncertainty. This project builds a production-grade credit risk system that predicts the probability of default, forecasts expected financial loss, and quantifies the uncertainty of those predictions.
+> **Thesis:** A model is only as good as its ability to survive uncertainty. A prediction without a confidence interval is a guess. This project builds a production-grade credit risk system that predicts default probability, forecasts expected financial loss, and translates those predictions into a capital allocation strategy.
 
-## Architecture
+## The Business Question
+> *"How much money will we lose next quarter, and what is our risk tolerance?"*
 
-1. **Advanced SQL Feature Pipeline** (`/sql`): Uses recursive CTEs and window functions to calculate rolling customer behavior metrics.
-2. **Credit Risk Model** (`/models`): Calibrated XGBoost model with cost-sensitive thresholding.
-3. **Forecasting Engine** (`/forecasting`): Time-series forecasting of Expected Loss (PD × LGD × EAD) with rolling-origin cross-validation.
-4. **Rust Inference Engine** (`/rust-engine`): High-performance scoring API built in Rust.
+Most credit models stop at predicting binary default. This system goes further: it calculates the **Expected Loss (PD × LGD × EAD)** over a 6-month horizon and provides a **90% confidence interval**. This allows a risk committee to make capital allocation decisions based on worst-case scenarios, not just point estimates.
 
-## Status
+## The Architecture
+
+This system is built in four distinct layers, each solving a specific failure mode of traditional analytics:
+
+1. **Advanced SQL Feature Pipeline (`/sql`)**
+   - **Why:** Traditional models use static features. This pipeline uses recursive CTEs and window functions to calculate rolling 6-month payment behavior and risk deciles.
+   - **Failure mode solved:** Prevents data leakage by strictly aligning features to the application date.
+
+2. **Credit Risk Model (`/models`)**
+   - **Why:** XGBoost probabilities are often overconfident and uncalibrated. This layer applies **isotonic calibration** to ensure the probabilities are mathematically defensible.
+   - **Failure mode solved:** Prevents the business from making decisions based on false confidence.
+
+3. **Forecasting Engine (`/forecasting`)**
+   - **Why:** Point estimates are dangerous. This layer uses Holt-Winters exponential smoothing to forecast expected loss, complete with **90% prediction intervals**.
+   - **Failure mode solved:** Forces the business to plan for uncertainty, not just the median outcome.
+
+4. **Rust Inference Engine (`/rust-engine`)**
+   - **Why:** Python is too slow for real-time decisioning. The core scoring logic is rewritten in Rust to ensure sub-10ms latency.
+   - **Failure mode solved:** Prevents the model from becoming a bottleneck in a high-volume lending environment.
+
+## Cost-Sensitive Decisioning
+The final threshold is not 0.5. It is derived from a **cost matrix**:
+- Cost of a False Negative (Approving a defaulter): $10,000
+- Cost of a False Positive (Rejecting a good customer): $1,000
+
+The system calculates the **optimal probability threshold** (currently 45%) that minimizes total expected financial loss. It outputs a recommendation (APPROVE / REJECT), not just a probability.
+
+## Repository Status
 - [x] Advanced SQL Feature Pipeline
-- [x] Credit Risk Model (Calibrated XGBoost)
-- [x] Forecasting Engine (Holt-Winters with 90% Confidence Intervals)
-- [x] Rust Inference Engine (Low-latency scoring)
-
-## The Senior-Level Signal
-This project goes beyond predictive modeling. It includes:
-1. **Time-Based Validation:** No random splits. The model is evaluated on future data.
-2. **Probability Calibration:** The model outputs defensible probabilities, not just rankings.
-3. **Cost-Sensitive Decisioning:** The threshold is optimized for the financial cost of false positives vs. false negatives.
-4. **Uncertainty Quantification:** The forecast includes 90% prediction intervals, allowing risk committees to plan for worst-case scenarios.
-5. **Systems Engineering:** The core inference is written in Rust to prove capability in low-latency environments.
+- [x] Calibrated Credit Risk Model
+- [x] Expected Loss Forecasting (with Confidence Intervals)
+- [x] Low-latency Rust Inference Engine

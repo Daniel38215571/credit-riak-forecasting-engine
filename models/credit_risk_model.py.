@@ -71,6 +71,7 @@ auc_roc = roc_auc_score(y_test, y_probs)
 brier = brier_score_loss(y_test, y_probs)
 print(f"ROC-AUC: {auc_roc:.4f}")
 print(f"Brier Score: {brier:.4f}")
+
 # 8. The Decision Science Layer: Business Value Simulation
 # We simulate what happens to the bank's profit at different approval thresholds.
 # Assume: 

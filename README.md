@@ -1,4 +1,4 @@
-# credit-riak-forecasting-engine# Credit Risk & Loss Forecasting Engine
+# Credit Risk & Loss Forecasting Engine
 
 **Thesis:** A model is only as good as its ability to survive uncertainty. This project builds a production-grade credit risk system that predicts the probability of default, forecasts expected financial loss, and quantifies the uncertainty of those predictions.
 

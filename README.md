@@ -34,15 +34,18 @@ The final threshold is not 0.5. It is derived from a **cost matrix**:
 
 The system calculates the **optimal probability threshold** (currently 45%) that minimizes total expected financial loss. It outputs a recommendation (APPROVE / REJECT), not just a probability.
 
-## Repository Status
-- [x] Advanced SQL Feature Pipeline
-- [x] Calibrated Credit Risk Model
-- [x] Expected Loss Forecasting (with Confidence Intervals)
-- [x] Low-latency Rust Inference Engine
-
 ## How to Run
 
-1. Clone the repo.
-2. Install dependencies: `pip install -r requirements.txt` (or equivalent).
-3. Run the models: `python models/credit_risk_model.py`
-4. Run the forecast: `python forecasting/expected_loss_forecast.py`
+1. Clone the repository:
+```bash
+git clone https://github.com/Daniel38215571/credit-risk-forecasting-engine.git
+cd credit-risk-forecasting-engine
+
+2. pip install -r requirements.txt
+
+3. python models/credit_risk_model.py
+
+4. python forecasting/expected_loss_forecast.py
+
+5. cd rust-engine
+   cargo run

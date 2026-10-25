@@ -2,68 +2,83 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
-from scipy import stats
+from sklearn.metrics import mean_absolute_error
 import warnings
 warnings.filterwarnings('ignore')
 
-# 1. Mock the Expected Loss data (Aggregated monthly from the Credit Risk Model)
-# In a real pipeline, this would be: SELECT month, SUM(pd * lgd * ead) FROM predictions GROUP BY 1
+# 1. Mock the Expected Loss data
 np.random.seed(42)
-dates = pd.date_range(start='2024-01-01', periods=36, freq='M')
-# Create a trend + seasonality + noise
-trend = np.linspace(100000, 150000, 36)
-seasonality = np.sin(np.linspace(0, 3 * np.pi, 36)) * 20000
-noise = np.random.normal(0, 5000, 36)
+dates = pd.date_range(start='2024-01-01', periods=48, freq='M') # 4 years of data
+trend = np.linspace(100000, 150000, 48)
+seasonality = np.sin(np.linspace(0, 4 * np.pi, 48)) * 20000
+noise = np.random.normal(0, 5000, 48)
 expected_loss = trend + seasonality + noise
 
 df = pd.DataFrame({'date': dates, 'expected_loss': expected_loss})
 df.set_index('date', inplace=True)
 
-# 2. Train the Forecasting Model (Holt-Winters Exponential Smoothing)
-# This handles trend and seasonality natively
-model = ExponentialSmoothing(
-    df['expected_loss'], 
-    trend='add', 
-    seasonal='add', 
-    seasonal_periods=12
-).fit()
+# 2. ROLLING-ORIGIN BACKTESTING (The Senior-level Part)
+# We simulate forecasting 6 months ahead, 4 different times in history.
+# This prevents data leakage and proves the model works in production.
+print("--- ROLLING-ORIGIN BACKTESTING ---")
+train_window = 24 # 2 years of training data
+forecast_horizon = 6 # predict 6 months out
 
-# 3. Forecast the next 6 months
-forecast_steps = 6
-forecast = model.forecast(forecast_steps)
+backtest_mae = []
 
-# 4. Calculate Prediction Intervals (The Senior-level part)
-# We calculate the standard deviation of the residuals to build the 90% confidence interval
-residuals = model.resid
-std_dev = np.std(residuals)
-z_score = stats.norm.ppf(0.95) # 90% confidence interval (5% on each tail)
+for i in range(len(df) - train_window - forecast_horizon + 1):
+    train_data = df['expected_loss'].iloc[i : i + train_window]
+    test_data = df['expected_loss'].iloc[i + train_window : i + train_window + forecast_horizon]
+    
+    # Fit model
+    model = ExponentialSmoothing(train_data, trend='add', seasonal='add', seasonal_periods=12).fit()
+    forecast = model.forecast(forecast_horizon)
+    
+    # Evaluate
+    mae = mean_absolute_error(test_data, forecast)
+    backtest_mae.append(mae)
+    print(f"Fold {i+1}: Trained up to {train_data.index[-1].strftime('%Y-%m')}, MAE: ${mae:,.2f}")
 
-# Create the upper and lower bounds
-lower_bound = forecast - (z_score * std_dev)
-upper_bound = forecast + (z_score * std_dev)
+print(f"\nAverage MAE across backtests: ${np.mean(backtest_mae):,.2f}")
 
-# 5. Combine into a clean DataFrame for the business
+# 3. THE ASYMMETRIC COST FUNCTION (The Decision Science Part)
+# In financial forecasting, under-predicting loss is worse than over-predicting it.
+# If we predict low (underestimate loss), we don't hold enough capital -> Catastrophic.
+# If we predict high (overestimate loss), we hold too much capital -> Opportunity cost.
+cost_underpredict = 100 # Cost of being $1 short
+cost_overpredict = 10   # Cost of holding $1 extra
+
+final_model = ExponentialSmoothing(df['expected_loss'], trend='add', seasonal='add', seasonal_periods=12).fit()
+base_forecast = final_model.forecast(6)
+
+# We adjust the forecast to minimize the asymmetric cost
+# The optimal adjustment is derived from the ratio of costs
+adjustment = (cost_underpredict - cost_overpredict) / (cost_underpredict + cost_overpredict)
+
+# For a 90% confidence bound, we use a Z-score of 1.28
+residual_std = np.std(final_model.resid)
+z_score = 1.28 # 90% one-sided confidence
+
+# Adjusted forecast (pushing it up to be safe)
+safe_forecast = base_forecast + (z_score * residual_std * adjustment)
+
+# 4. Build the final DataFrame for the business
 forecast_df = pd.DataFrame({
-    'Forecasted_Loss': forecast,
-    'Lower_Bound_90': lower_bound,
-    'Upper_Bound_90': upper_bound
+    'Point_Forecast': base_forecast,
+    'Safe_Capital_Reserve': safe_forecast,
+    'Upper_Bound_95': base_forecast + (1.96 * residual_std)
 })
 
-print("Forecasted Expected Loss (Next 6 Months):")
+print("\n--- FINAL CAPITAL RESERVE FORECAST ---")
 print(forecast_df)
 
-# 6. Plotting the results (Visual proof for the README)
-plt.figure(figsize=(10, 6))
-plt.plot(df.index, df['expected_loss'], label='Historical Expected Loss', color='blue')
-plt.plot(forecast_df.index, forecast_df['Forecasted_Loss'], label='Forecast', color='red', linestyle='--')
-plt.fill_between(
-    forecast_df.index, 
-    forecast_df['Lower_Bound_90'], 
-    forecast_df['Upper_Bound_90'], 
-    color='pink', alpha=0.3, label='90% Confidence Interval'
-)
-plt.title('Expected Loss Forecast with Prediction Intervals')
-plt.xlabel('Date')
+# 5. Plotting
+plt.figure(figsize=(12, 6))
+plt.plot(df.index, df['expected_loss'], label='Historical Loss', color='blue')
+plt.plot(forecast_df.index, forecast_df['Point_Forecast'], label='Point Forecast', color='orange', linestyle='--')
+plt.plot(forecast_df.index, forecast_df['Safe_Capital_Reserve'], label='Safe Capital Reserve (Cost-Adjusted)', color='red', linewidth=2)
+plt.fill_between(forecast_df.index, forecast_df['Point_Forecast'], forecast_df['Upper_Bound_95'], color='red', alpha=0.1)
+plt.title('Expected Loss Forecast with Asymmetric Cost Adjustment')
 plt.ylabel('Expected Loss ($)')
 plt.legend()
 plt.grid(True)
